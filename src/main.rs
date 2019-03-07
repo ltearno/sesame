@@ -6,48 +6,24 @@ extern crate uuid;
 extern crate serde_derive;
 extern crate base64;
 
+mod basic_authenticator;
+mod config;
+mod model;
+
+use config::*;
+use model::*;
+
 use actix_web::{
-    http::header, http::ContentEncoding, http::Method, middleware, middleware::cors::Cors, server,
-    App, HttpRequest, HttpResponse,
+    http::header, http::ContentEncoding, http::StatusCode, middleware, middleware::cors::Cors,
+    server, App, HttpRequest, HttpResponse,
 };
 use jwt::{encode, Algorithm, Header};
 use openssl::rsa::Rsa;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
-use std::fs::File;
-use std::io::Read;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    jti: String,
-    sub: String,
-    company: String,
-    exp: usize,
-    role: String,
-    roles: String,
-    iss: String,
-    aud: String,
-    uuid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct KeyDescription {
-    kid: String,
-    kty: String,
-    alg: String,
-    #[serde(rename = "use")]
-    usee: String,
-    n: String,
-    e: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ServerDescription {
-    keys: Vec<KeyDescription>,
-}
-
 fn certs(_req: &HttpRequest) -> HttpResponse {
-    let private_key = read_private_key().expect("cannot read key");
+    let private_key = read_jwt_private_key().expect("cannot read key");
 
     let rsa_key = Rsa::private_key_from_der(&private_key).expect("cannot read RSA key");
 
@@ -73,20 +49,16 @@ fn certs(_req: &HttpRequest) -> HttpResponse {
         .json(body)
 }
 
-fn read_private_key() -> Result<Vec<u8>, String> {
-    let mut file = File::open("private_rsa_key.der").unwrap();
-    let mut private_key = Vec::new();
-
-    match file.read_to_end(&mut private_key) {
-        Ok(_) => Ok(private_key),
-        Err(_) => Err(String::from("cannot read key!")),
-    }
-}
-
 fn index(_req: &HttpRequest) -> HttpResponse {
     let mut header = Header::default();
     header.kid = Some("toto".to_owned());
     header.alg = Algorithm::RS256;
+
+    let authenticator = basic_authenticator::BasicAuthenticator {};
+
+    if let Err(_) = authenticator.authenticate() {
+        return HttpResponse::new(StatusCode::UNAUTHORIZED);
+    }
 
     let my_claims = Claims {
         uuid: String::from("foolok"),
@@ -97,11 +69,13 @@ fn index(_req: &HttpRequest) -> HttpResponse {
         role: String::from("{}"),
 
         roles: String::from("{}"),
-        iss: String::from("https://authenticate-dev.idp.private.geoapi-airbusds.com/auth/realms/IDP"),
+        iss: String::from(
+            "https://authenticate-dev.idp.private.geoapi-airbusds.com/auth/realms/IDP",
+        ),
         aud: String::from("IDP"),
     };
 
-    let private_key = read_private_key().expect("cannot read private key");
+    let private_key = read_jwt_private_key().expect("cannot read private key");
 
     let token = encode(&header, &my_claims, &private_key).expect("cannot generate JWT token");
 
@@ -112,8 +86,7 @@ fn index(_req: &HttpRequest) -> HttpResponse {
 }
 
 fn main() {
-    let private_key = read_private_key().expect("cannot find/read private key file");
-    Rsa::private_key_from_der(&private_key).expect("cannot parse rsa key");
+    check_configuration().expect("configuration error");
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder

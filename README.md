@@ -14,6 +14,7 @@ This is the very first beginning of a cloud native open id connect identity prov
 - will federate other user data sources (ldap, ...)
 - key rotation
 - hardened
+- provide metrics (through Prometheus or something like that)
 - ...
 
 ##

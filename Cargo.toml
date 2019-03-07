@@ -16,3 +16,7 @@ openssl = "0.10"
 base64 = "0.10.1"
 uuid = "0.7.2"
 rustls = "0.14.0"
+
+[[bin]]
+name = "sesame"
+path = "src/main.rs"
