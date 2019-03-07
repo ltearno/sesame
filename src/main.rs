@@ -121,8 +121,6 @@ fn main() {
         .expect("cannot read key for tls, create key.pem and cert.pem with this command : openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out cert.pem");
     builder.set_certificate_chain_file("cert.pem").unwrap();
 
-    //let mut config = ServerConfig::new(NoClientAuth::new());
-
     server::new(|| {
         App::new()
             .middleware(middleware::Logger::default())
