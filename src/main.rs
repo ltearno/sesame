@@ -107,14 +107,7 @@ fn index(_req: &HttpRequest) -> HttpResponse {
 fn main() {
     let private_key = read_private_key().expect("cannot read private key");
 
-    let key_pair = signature::RSAKeyPair::from_der(untrusted::Input::from(&private_key))
-        .expect("cannot parse RSA private key");
-    println!("p {:?}", key_pair);
-    println!("p {:?}", key_pair.public_modulus_len());
-
     let rsa_key = Rsa::private_key_from_der(&private_key).expect("cannot read RSA key");
-    println!("n {:?}", rsa_key.n().to_hex_str().unwrap());
-    println!("e {:?}", rsa_key.e());
 
     let encoded_modulus = base64::encode_config(&(rsa_key.n().to_vec()), base64::URL_SAFE_NO_PAD);
     let encoded_exponent = base64::encode_config(&(rsa_key.e().to_vec()), base64::URL_SAFE_NO_PAD);
