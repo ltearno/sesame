@@ -8,7 +8,6 @@ extern crate base64;
 use actix_web::{http::ContentEncoding, server, App, HttpRequest, HttpResponse};
 use jwt::{encode, Algorithm, Header};
 use openssl::rsa::Rsa;
-use ring::signature;
 use std::fs::File;
 use std::io::Read;
 
