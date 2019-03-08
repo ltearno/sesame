@@ -5,6 +5,7 @@ extern crate uuid;
 #[macro_use]
 extern crate serde_derive;
 extern crate base64;
+extern crate serde_json;
 
 mod basic_authenticator;
 mod config;
@@ -14,70 +15,67 @@ use config::*;
 use model::*;
 
 use actix_web::{
-    http::header, http::ContentEncoding, http::StatusCode, middleware, middleware::cors::Cors,
-    server, App, HttpRequest, HttpResponse,
+    http, http::header, http::ContentEncoding, http::StatusCode, middleware,
+    middleware::cors::Cors, server, App, HttpRequest, HttpResponse,
 };
 use jwt::{encode, Algorithm, Header};
 use openssl::rsa::Rsa;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use uuid::Uuid;
 
-fn certs(_req: &HttpRequest) -> HttpResponse {
-    let private_key = read_jwt_private_key().expect("cannot read key");
+#[derive(Clone)]
+struct ServerState {
+    configuration: ConfigurationFile,
+    private_key: Vec<u8>,
+    private_key_modulus: String,
+    private_key_exponent: String,
+    private_key_kid: String,
+}
 
-    let rsa_key = Rsa::private_key_from_der(&private_key).expect("cannot read RSA key");
-
-    let encoded_modulus = base64::encode_config(&(rsa_key.n().to_vec()), base64::URL_SAFE_NO_PAD);
-    let encoded_exponent = base64::encode_config(&(rsa_key.e().to_vec()), base64::URL_SAFE_NO_PAD);
-
+fn certs(_req: &HttpRequest<ServerState>) -> HttpResponse {
     let key_description = KeyDescription {
-        kid: String::from("toto"),
         kty: String::from("RSA"),
         alg: String::from("RSA256"),
         usee: String::from("sig"),
-        n: encoded_modulus,
-        e: encoded_exponent,
-    };
-
-    let body = ServerDescription {
-        keys: vec![key_description],
+        kid: _req.state().private_key_kid.to_owned(),
+        n: _req.state().private_key_modulus.to_owned(),
+        e: _req.state().private_key_exponent.to_owned(),
     };
 
     HttpResponse::Ok()
         .content_encoding(ContentEncoding::Auto)
         .content_type("application/json")
-        .json(body)
+        .json(ServerDescription {
+            keys: vec![key_description],
+        })
 }
 
-fn index(_req: &HttpRequest) -> HttpResponse {
+fn index(_req: &HttpRequest<ServerState>) -> HttpResponse {
     let mut header = Header::default();
-    header.kid = Some("toto".to_owned());
+    header.kid = Some(_req.state().private_key_kid.to_owned());
     header.alg = Algorithm::RS256;
 
     let authenticator = basic_authenticator::BasicAuthenticator {};
 
-    if let Err(_) = authenticator.authenticate() {
-        return HttpResponse::new(StatusCode::UNAUTHORIZED);
-    }
+    let user_uuid = match authenticator.authenticate() {
+        Err(_) => return HttpResponse::new(StatusCode::UNAUTHORIZED),
+        Ok(user_uuid) => user_uuid,
+    };
 
     let my_claims = Claims {
-        uuid: String::from("foolok"),
+        uuid: user_uuid,
         jti: Uuid::new_v4().to_string(),
         sub: String::from("Tto"),
-        company: String::from("LTE Consulting"),
+        company: _req.state().configuration.company.to_owned(),
         exp: 1552974457,
         role: String::from("{}"),
-
         roles: String::from("{}"),
-        iss: String::from(
-            "https://authenticate-dev.idp.private.geoapi-airbusds.com/auth/realms/IDP",
-        ),
+        iss: _req.state().configuration.issuer_url.to_owned(),
         aud: String::from("IDP"),
     };
 
-    let private_key = read_jwt_private_key().expect("cannot read private key");
-
-    let token = encode(&header, &my_claims, &private_key).expect("cannot generate JWT token");
+    let token =
+        encode(&header, &my_claims, &_req.state().private_key).expect("cannot generate JWT token");
 
     HttpResponse::Ok()
         .content_encoding(ContentEncoding::Auto)
@@ -86,7 +84,27 @@ fn index(_req: &HttpRequest) -> HttpResponse {
 }
 
 fn main() {
+    let configuration = read_configuration().expect("error reading configuration");
+    println!("{:?}", configuration);
+
+    let private_key = read_jwt_private_key().expect("cannot read private key");
+
+    let rsa_key = Rsa::private_key_from_der(&private_key).expect("cannot read RSA key");
+
+    let private_key_modulus =
+        base64::encode_config(&(rsa_key.n().to_vec()), base64::URL_SAFE_NO_PAD);
+    let private_key_exponent =
+        base64::encode_config(&(rsa_key.e().to_vec()), base64::URL_SAFE_NO_PAD);
+
     check_configuration().expect("configuration error");
+
+    let server_state = ServerState {
+        configuration,
+        private_key,
+        private_key_modulus,
+        private_key_exponent,
+        private_key_kid: Uuid::new_v4().to_string(),
+    };
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder
@@ -94,8 +112,8 @@ fn main() {
         .expect("cannot read key for tls, create key.pem and cert.pem with this command : openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out cert.pem");
     builder.set_certificate_chain_file("cert.pem").unwrap();
 
-    server::new(|| {
-        App::new()
+    server::new(move || {
+        App::with_state(server_state.clone())
             .middleware(middleware::Logger::default())
             .configure(|app| {
                 Cors::for_app(app)
@@ -105,11 +123,11 @@ fn main() {
                     .allowed_header(header::CONTENT_TYPE)
                     .max_age(3600)
                     .resource("/", |r| r.f(index))
-                    .resource("/certs", |r| r.f(certs))
+                    .resource("/certs", |r| r.method(http::Method::GET).f(certs))
                     .register()
             })
     })
-    .bind_ssl("0.0.0.0:8443", builder)
+    .bind_ssl("127.0.0.1:8443", builder)
     .unwrap()
     .run();
 }

@@ -1,6 +1,28 @@
 use openssl::rsa::Rsa;
+//use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ConfigurationFile {
+    pub company: String,
+    pub issuer_url: String,
+}
+
+pub fn read_configuration() -> Result<ConfigurationFile, String> {
+    let mut file = File::open("configuration.json").expect("cannot read configuration file");
+    let mut content = String::new();
+
+    if let Err(_) = file.read_to_string(&mut content) {
+        return Err(String::from("cannot read file"));
+    }
+
+    let result: Result<ConfigurationFile, serde_json::Error> = serde_json::from_str(&content);
+    match result {
+        Ok(configuration) => Ok(configuration),
+        Err(_) => Err(String::from("cannot parse your configuration file")),
+    }
+}
 
 pub fn read_jwt_private_key() -> Result<Vec<u8>, String> {
     let mut file = File::open("private_rsa_key.der").unwrap();

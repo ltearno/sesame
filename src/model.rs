@@ -28,5 +28,6 @@ pub struct ServerDescription {
 }
 
 pub trait Authenticator {
-    fn authenticate(&self) -> Result<(), ()>;
+    // returns the user's uuid
+    fn authenticate(&self) -> Result<String, ()>;
 }
