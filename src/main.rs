@@ -55,7 +55,7 @@ fn index(_req: &HttpRequest<ServerState>) -> HttpResponse {
     header.kid = Some(_req.state().private_key_kid.to_owned());
     header.alg = Algorithm::RS256;
 
-    let authenticator = basic_authenticator::BasicAuthenticator {};
+    let authenticator = basic_authenticator::BasicAuthenticator::new();
 
     let user_uuid = match authenticator.authenticate() {
         Err(_) => return HttpResponse::new(StatusCode::UNAUTHORIZED),
