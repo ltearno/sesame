@@ -16,7 +16,7 @@ use model::*;
 
 use actix_web::{
     http, http::header, http::ContentEncoding, http::StatusCode, middleware,
-    middleware::cors::Cors, server, App, FromRequest, HttpRequest, HttpResponse, Query,
+    middleware::cors::Cors, server, App, FromRequest, HttpRequest, HttpResponse, Query, Responder,
 };
 use jwt::{encode, Algorithm, Header};
 use openssl::rsa::Rsa;
@@ -90,10 +90,7 @@ fn index<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
 
     // return a 301 to param 'redirect_uri' with query param access_token = accesstoken
     HttpResponse::MovedPermanently()
-        .header(
-            "Location",
-            redirect_uri + "#access_token=" + &token,
-        )
+        .header("Location", redirect_uri + "#access_token=" + &token)
         .finish()
 
     /*HttpResponse::Ok()
@@ -143,6 +140,9 @@ fn main() {
                     .allowed_header(header::CONTENT_TYPE)
                     .max_age(3600)
                     .resource("/login", |r| r.f(index))
+                    .resource("/test", |resource| {
+                        resource.f(|r| actix_web::fs::NamedFile::open("test.html").respond_to(r))
+                    })
                     .resource("/certs", |r| r.method(http::Method::GET).f(certs))
                     .register()
             })
