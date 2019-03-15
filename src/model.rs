@@ -27,9 +27,7 @@ pub struct ServerDescription {
     pub keys: Vec<KeyDescription>,
 }
 
-pub trait Authenticator {
-    fn new() -> Self;
-
+pub trait Authenticator: Clone {
     // returns the user's uuid
     fn authenticate(&self) -> Result<String, ()>;
 }
