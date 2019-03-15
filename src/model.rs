@@ -1,3 +1,5 @@
+use actix_web::HttpRequest;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub jti: String,
@@ -29,5 +31,5 @@ pub struct ServerDescription {
 
 pub trait Authenticator: Clone {
     // returns the user's uuid
-    fn authenticate(&self) -> Result<String, ()>;
+    fn authenticate<A>(&self, req: &HttpRequest<A>) -> Result<String, ()>;
 }

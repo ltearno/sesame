@@ -14,9 +14,10 @@ mod model;
 use config::*;
 use model::*;
 
+use actix_web::FromRequest;
 use actix_web::{
     http, http::header, http::ContentEncoding, http::StatusCode, middleware,
-    middleware::cors::Cors, server, App, HttpRequest, HttpResponse,
+    middleware::cors::Cors, server, App, HttpRequest, HttpResponse, Path,
 };
 use jwt::{encode, Algorithm, Header};
 use openssl::rsa::Rsa;
@@ -24,15 +25,16 @@ use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use uuid::Uuid;
 
 #[derive(Clone)]
-struct ServerState {
+struct ServerState<A: Authenticator> {
     configuration: ConfigurationFile,
     private_key: Vec<u8>,
     private_key_modulus: String,
     private_key_exponent: String,
     private_key_kid: String,
+    authenticator: Box<A>,
 }
 
-fn certs(_req: &HttpRequest<ServerState>) -> HttpResponse {
+fn certs<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
     let key_description = KeyDescription {
         kty: String::from("RSA"),
         alg: String::from("RSA256"),
@@ -50,14 +52,14 @@ fn certs(_req: &HttpRequest<ServerState>) -> HttpResponse {
         })
 }
 
-fn index(_req: &HttpRequest<ServerState>) -> HttpResponse {
+fn index<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
     let mut header = Header::default();
     header.kid = Some(_req.state().private_key_kid.to_owned());
     header.alg = Algorithm::RS256;
 
-    let authenticator = basic_authenticator::BasicAuthenticator::new();
+    let authenticator = &_req.state().authenticator;
 
-    let user_uuid = match authenticator.authenticate() {
+    let user_uuid = match authenticator.authenticate(_req) {
         Err(_) => return HttpResponse::new(StatusCode::UNAUTHORIZED),
         Ok(user_uuid) => user_uuid,
     };
@@ -104,6 +106,7 @@ fn main() {
         private_key_modulus,
         private_key_exponent,
         private_key_kid: Uuid::new_v4().to_string(),
+        authenticator: Box::from(basic_authenticator::new_basic_authenticator()),
     };
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
