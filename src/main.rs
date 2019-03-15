@@ -1,4 +1,5 @@
 extern crate actix_web;
+extern crate futures;
 extern crate jsonwebtoken as jwt;
 extern crate openssl;
 extern crate uuid;
@@ -6,6 +7,7 @@ extern crate uuid;
 extern crate serde_derive;
 extern crate base64;
 extern crate serde_json;
+extern crate serde_urlencoded;
 
 mod basic_authenticator;
 mod config;
