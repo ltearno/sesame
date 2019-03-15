@@ -14,10 +14,9 @@ mod model;
 use config::*;
 use model::*;
 
-use actix_web::FromRequest;
 use actix_web::{
     http, http::header, http::ContentEncoding, http::StatusCode, middleware,
-    middleware::cors::Cors, server, App, HttpRequest, HttpResponse, Path,
+    middleware::cors::Cors, server, App, FromRequest, HttpRequest, HttpResponse, Query,
 };
 use jwt::{encode, Algorithm, Header};
 use openssl::rsa::Rsa;
@@ -52,6 +51,11 @@ fn certs<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
         })
 }
 
+#[derive(Deserialize)]
+struct AuthEndpointRequest {
+    redirect_uri: String,
+}
+
 fn index<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
     let mut header = Header::default();
     header.kid = Some(_req.state().private_key_kid.to_owned());
@@ -79,10 +83,23 @@ fn index<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
     let token =
         encode(&header, &my_claims, &_req.state().private_key).expect("cannot generate JWT token");
 
-    HttpResponse::Ok()
-        .content_encoding(ContentEncoding::Auto)
-        .content_type("application/json")
-        .body(token)
+    let redirect_uri = Query::<AuthEndpointRequest>::extract(_req)
+        .expect("bad request, missing redirect_uri")
+        .redirect_uri
+        .clone();
+
+    // return a 301 to param 'redirect_uri' with query param access_token = accesstoken
+    HttpResponse::MovedPermanently()
+        .header(
+            "Location",
+            redirect_uri + "#access_token=" + &token,
+        )
+        .finish()
+
+    /*HttpResponse::Ok()
+    .content_encoding(ContentEncoding::Auto)
+    .content_type("application/json")
+    .body(token)*/
 }
 
 fn main() {
@@ -125,7 +142,7 @@ fn main() {
                     .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
                     .allowed_header(header::CONTENT_TYPE)
                     .max_age(3600)
-                    .resource("/", |r| r.f(index))
+                    .resource("/login", |r| r.f(index))
                     .resource("/certs", |r| r.method(http::Method::GET).f(certs))
                     .register()
             })

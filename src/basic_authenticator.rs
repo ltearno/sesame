@@ -32,7 +32,7 @@ impl Authenticator for BasicAuthenticator {
                     Err(())
                 }
             }
-            Err(_) => Err(()),
+            Err(_) => Ok(String::from("anonymous"))//Err(()),
         }
     }
 }
