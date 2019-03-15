@@ -1,5 +1,3 @@
-use actix_web::HttpRequest;
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub jti: String,
@@ -27,9 +25,4 @@ pub struct KeyDescription {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerDescription {
     pub keys: Vec<KeyDescription>,
-}
-
-pub trait Authenticator: Clone {
-    // returns the user's uuid
-    fn authenticate<A>(&self, req: &HttpRequest<A>) -> Result<String, ()>;
 }

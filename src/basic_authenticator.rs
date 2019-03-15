@@ -1,8 +1,9 @@
 use crate::model::*;
 use actix_web::{
-    AsyncResponder, FromRequest, HttpMessage, HttpRequest, HttpResponse, Query, Result,
+    error::UrlencodedError, AsyncResponder, Form, FromRequest, HttpMessage, HttpRequest,
+    HttpResponse, Query, Responder, Result,
 };
-use futures::future::{ok, Future};
+use futures::future::{ok, Err, Future};
 use serde_urlencoded;
 use uuid::Uuid;
 
@@ -29,33 +30,37 @@ struct FormData {
     password: String,
 }
 
-impl Authenticator for BasicAuthenticator {
-    fn authenticate<A>(&self, req: &HttpRequest<A>) -> Result<String, ()> {
-        if req.content_type().to_lowercase() != "application/x-www-form-urlencoded" {
-            return Ok(String::from("nope"));
-        }
-
-        let encoding = match req.encoding() {
-            Ok(enc) => enc,
-            Err(_) => return Err(()),
-        };
-
-        let rr = req
-            .urlencoded::<FormData>()
-            .from_err()
-            .and_then(|params| {
-                if params.username == "ltearno" && params.password == "toto" {
-                    let user_uuid = Uuid::new_v4().to_string();
-                    println!("welcome user {} {}", params.username, user_uuid);
-
-                    Ok(user_uuid)
-                } else {
-                    Err(())
-                };
-
-                println!("USERNAME: {:?}", params.username);
-                ok(HttpResponse::Ok().into())
-            })
-            .responder();
+impl BasicAuthenticator {
+    pub fn authenticate<A>(&self, req: &HttpRequest<A>) {
+        let form = req.urlencoded::<FormData>();
     }
+    /*pub fn authenticate<A>(&self, req: &HttpRequest<A>) -> impl Responder {
+    /*if req.content_type().to_lowercase() != "application/x-www-form-urlencoded" {
+        return Ok(String::from("nope"));
+    }*/
+    /*let encoding = match req.encoding() {
+        Ok(enc) => enc,
+        Err(_) => return Err(()),
+    };*/
+    let form = req.urlencoded::<FormData>();
+    //let n = .responder();
+
+    req.urlencoded::<FormData>()
+    //.from_err()
+    .then(|params| {
+    let params = params.expect("lkj");
+    if params.username == "ltearno" && params.password == "toto" {
+    let user_uuid = Uuid::new_v4().to_string();
+    println!("welcome user {} {}", params.username, user_uuid);
+
+    Ok(user_uuid)
+    } else {
+    Err(())
+    };
+
+    println!("USERNAME: {:?}", params.username);
+    ok::<HttpResponse, actix_web::Error>(HttpResponse::Ok().into())
+    })
+    .responder()
+    }*/
 }

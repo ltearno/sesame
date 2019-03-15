@@ -9,6 +9,7 @@ extern crate base64;
 extern crate serde_json;
 extern crate serde_urlencoded;
 
+use futures::future::{ok, Err, Future};
 mod basic_authenticator;
 mod config;
 mod model;
@@ -18,7 +19,8 @@ use model::*;
 
 use actix_web::{
     http, http::header, http::ContentEncoding, http::StatusCode, middleware,
-    middleware::cors::Cors, server, App, FromRequest, HttpRequest, HttpResponse, Query, Responder,
+    middleware::cors::Cors, server, App, AsyncResponder, Form, FromRequest, HttpMessage,
+    HttpRequest, HttpResponse, Query, Responder,
 };
 use jwt::{encode, Algorithm, Header};
 use openssl::rsa::Rsa;
@@ -26,16 +28,16 @@ use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use uuid::Uuid;
 
 #[derive(Clone)]
-struct ServerState<A: Authenticator> {
+struct ServerState {
     configuration: ConfigurationFile,
     private_key: Vec<u8>,
     private_key_modulus: String,
     private_key_exponent: String,
     private_key_kid: String,
-    authenticator: Box<A>,
+    authenticator: basic_authenticator::BasicAuthenticator,
 }
 
-fn certs<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
+fn certs(_req: &HttpRequest<ServerState>) -> HttpResponse {
     let key_description = KeyDescription {
         kty: String::from("RSA"),
         alg: String::from("RSA256"),
@@ -58,8 +60,46 @@ struct AuthEndpointRequest {
     redirect_uri: String,
 }
 
-fn index<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
-    let mut header = Header::default();
+#[derive(Deserialize)]
+struct FormData {
+    username: String,
+    password: String,
+}
+
+fn login(
+    req: &HttpRequest<ServerState>,
+) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
+    let i = req
+        .urlencoded::<FormData>()
+        //.from_err()
+        .then(|r| match r {
+            Err(_) => ok(HttpResponse::Ok()
+                .content_encoding(ContentEncoding::Auto)
+                .content_type("application/json")
+                .body(String::from("who are you ?"))
+                .into()),
+            Ok(r) => ok(HttpResponse::Ok()
+                .content_encoding(ContentEncoding::Auto)
+                .content_type("application/json")
+                .body(String::from("hello") + &r.username)
+                .into()),
+        })
+        .responder();
+
+    i
+    /*if let futures::Async::Ready(s) = req.urlencoded::<FormData>().poll().unwrap() {
+        HttpResponse::Ok()
+            .content_encoding(ContentEncoding::Auto)
+            .content_type("application/json")
+            .body(String::from("hello"))
+    } else {
+        HttpResponse::Ok()
+            .content_encoding(ContentEncoding::Auto)
+            .content_type("application/json")
+            .body("sorry")
+    }*/
+
+    /*let mut header = Header::default();
     header.kid = Some(_req.state().private_key_kid.to_owned());
     header.alg = Algorithm::RS256;
 
@@ -68,7 +108,7 @@ fn index<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
     let user_uuid = match authenticator.authenticate(_req) {
         Err(_) => return HttpResponse::new(StatusCode::UNAUTHORIZED),
         Ok(user_uuid) => user_uuid,
-    };
+    }
 
     let my_claims = Claims {
         uuid: user_uuid,
@@ -93,7 +133,7 @@ fn index<A: Authenticator>(_req: &HttpRequest<ServerState<A>>) -> HttpResponse {
     // return a 301 to param 'redirect_uri' with query param access_token = accesstoken
     HttpResponse::MovedPermanently()
         .header("Location", redirect_uri + "#access_token=" + &token)
-        .finish()
+        .finish()*/
 
     /*HttpResponse::Ok()
     .content_encoding(ContentEncoding::Auto)
@@ -122,7 +162,7 @@ fn main() {
         private_key_modulus,
         private_key_exponent,
         private_key_kid: Uuid::new_v4().to_string(),
-        authenticator: Box::from(basic_authenticator::new_basic_authenticator()),
+        authenticator: basic_authenticator::new_basic_authenticator(),
     };
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
@@ -141,7 +181,7 @@ fn main() {
                     .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
                     .allowed_header(header::CONTENT_TYPE)
                     .max_age(3600)
-                    .resource("/login", |r| r.f(index))
+                    .resource("/login", |r| r.f(login))
                     .resource("/test", |resource| {
                         resource.f(|r| actix_web::fs::NamedFile::open("test.html").respond_to(r))
                     })
