@@ -18,7 +18,7 @@ use config::*;
 use model::*;
 
 use actix_web::{
-    http, http::header, http::ContentEncoding, http::StatusCode, middleware,
+    http, http::header, http::ContentEncoding, http::Method, http::StatusCode, middleware,
     middleware::cors::Cors, server, App, AsyncResponder, Form, FromRequest, HttpMessage,
     HttpRequest, HttpResponse, Query, Responder,
 };
@@ -66,7 +66,7 @@ struct FormData {
     password: String,
 }
 
-fn login(
+fn login_form(
     req: &HttpRequest<ServerState>,
 ) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
     let i = req
@@ -181,9 +181,10 @@ fn main() {
                     .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
                     .allowed_header(header::CONTENT_TYPE)
                     .max_age(3600)
-                    .resource("/login", |r| r.f(login))
-                    .resource("/test", |resource| {
-                        resource.f(|r| actix_web::fs::NamedFile::open("test.html").respond_to(r))
+                    .resource("/login", |r| {
+                        r.method(http::Method::GET)
+                            .f(|r| actix_web::fs::NamedFile::open("login.html").respond_to(r));
+                        r.method(http::Method::POST).f(login_form);
                     })
                     .resource("/certs", |r| r.method(http::Method::GET).f(certs))
                     .register()
