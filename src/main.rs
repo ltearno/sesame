@@ -56,14 +56,10 @@ fn certs(_req: &HttpRequest<ServerState>) -> HttpResponse {
 }
 
 #[derive(Deserialize)]
-struct AuthEndpointRequest {
-    redirect_uri: String,
-}
-
-#[derive(Deserialize)]
 struct FormData {
     username: String,
     password: String,
+    redirect_uri: String,
 }
 
 fn generate_jwt_token(
@@ -96,7 +92,6 @@ fn login_form(
     req: &HttpRequest<ServerState>,
 ) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
     let state = req.state().clone();
-    let req2 = req.clone();
 
     req.urlencoded::<FormData>()
         .then(move |r| match r {
@@ -105,30 +100,26 @@ fn login_form(
                 .finish()
                 .into()),
             Ok(form) => {
-                let user_uuid = String::from(form.username);
-                let token = generate_jwt_token(
-                    &user_uuid,
-                    &state.private_key_kid,
-                    &state.configuration.company,
-                    &state.configuration.issuer_url,
-                    &state.private_key,
-                );
+                if form.username == "ltearno" && form.password == "toto" {
+                    let user_uuid = String::from(form.username);
+                    let token = generate_jwt_token(
+                        &user_uuid,
+                        &state.private_key_kid,
+                        &state.configuration.company,
+                        &state.configuration.issuer_url,
+                        &state.private_key,
+                    );
 
-                let redirect_uri = match Query::<AuthEndpointRequest>::extract(&req2) {
-                    Err(_) => {
-                        return ok(HttpResponse::MovedPermanently()
-                            .header("Location", "")
-                            .finish()
-                            .into());
-                    }
-
-                    Ok(form_data) => form_data.redirect_uri.clone(),
-                };
-
-                ok(HttpResponse::MovedPermanently()
-                    .header("Location", redirect_uri + "#access_token=" + &token)
-                    .finish()
-                    .into())
+                    ok(HttpResponse::MovedPermanently()
+                        .header("Location", form.redirect_uri + "#access_token=" + &token)
+                        .finish()
+                        .into())
+                } else {
+                    ok(HttpResponse::MovedPermanently()
+                        .header("Location", "")
+                        .finish()
+                        .into())
+                }
             }
         })
         .responder()

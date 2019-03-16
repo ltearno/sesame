@@ -13,9 +13,31 @@
 
     <form method="post" enctype="application/x-www-form-urlencoded">
         <label>Name <input name="username" type="text"></label><br />
-        <label>Password <input name="password" type="text"></label>
+        <label>Password <input name="password" type="password"></label><br />
+        <input type="hidden" id="redirect_uri" name="redirect_uri">
         <button>Connect</button>
     </form>
+
+    <script>
+        function getRedirectUri() {
+            const query = window.location.search.substr(1)
+            for (const part of query.split("&")) {
+                let idx = part.indexOf('=')
+                if (idx <= 0)
+                    continue
+                let name = part.substr(0, idx)
+                let value = part.substr(idx + 1)
+
+                if (name === 'redirect_uri')
+                    return value
+            }
+            return null
+        }
+
+        window.onload = () => {
+            document.getElementById("redirect_uri").value = getRedirectUri()
+        }
+    </script>
 </body>
 
 </html>
