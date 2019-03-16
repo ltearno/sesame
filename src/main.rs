@@ -100,7 +100,9 @@ fn login_form(
                 .finish()
                 .into()),
             Ok(form) => {
-                if form.username == "ltearno" && form.password == "toto" {
+                if form.username == state.configuration.username
+                    && form.password == state.configuration.password
+                {
                     let user_uuid = String::from(form.username);
                     let token = generate_jwt_token(
                         &user_uuid,
@@ -155,6 +157,7 @@ fn main() {
         .expect("cannot read key for tls, create key.pem and cert.pem with this command : openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out cert.pem");
     builder.set_certificate_chain_file("cert.pem").unwrap();
 
+    let server_state_clone = server_state.clone();
     server::new(move || {
         App::with_state(server_state.clone())
             .middleware(middleware::Logger::default())
@@ -174,7 +177,7 @@ fn main() {
                     .register()
             })
     })
-    .bind_ssl("127.0.0.1:8443", builder)
+    .bind_ssl(&server_state_clone.configuration.listening_address, builder)
     .unwrap()
     .run();
 }

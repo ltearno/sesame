@@ -7,6 +7,9 @@ use std::io::Read;
 pub struct ConfigurationFile {
     pub company: String,
     pub issuer_url: String,
+    pub listening_address: String,
+    pub username: String,
+    pub password: String,
 }
 
 pub fn read_configuration() -> Result<ConfigurationFile, String> {
