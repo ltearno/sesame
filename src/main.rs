@@ -66,79 +66,72 @@ struct FormData {
     password: String,
 }
 
-fn login_form(
-    req: &HttpRequest<ServerState>,
-) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
-    let i = req
-        .urlencoded::<FormData>()
-        //.from_err()
-        .then(|r| match r {
-            Err(_) => ok(HttpResponse::Ok()
-                .content_encoding(ContentEncoding::Auto)
-                .content_type("application/json")
-                .body(String::from("who are you ?"))
-                .into()),
-            Ok(r) => ok(HttpResponse::Ok()
-                .content_encoding(ContentEncoding::Auto)
-                .content_type("application/json")
-                .body(String::from("hello") + &r.username)
-                .into()),
-        })
-        .responder();
-
-    i
-    /*if let futures::Async::Ready(s) = req.urlencoded::<FormData>().poll().unwrap() {
-        HttpResponse::Ok()
-            .content_encoding(ContentEncoding::Auto)
-            .content_type("application/json")
-            .body(String::from("hello"))
-    } else {
-        HttpResponse::Ok()
-            .content_encoding(ContentEncoding::Auto)
-            .content_type("application/json")
-            .body("sorry")
-    }*/
-
-    /*let mut header = Header::default();
-    header.kid = Some(_req.state().private_key_kid.to_owned());
+fn generate_jwt_token(
+    user_uuid: &str,
+    kid: &str,
+    company: &str,
+    issuer_url: &str,
+    private_key: &Vec<u8>,
+) -> String {
+    let mut header = Header::default();
+    header.kid = Some(kid.to_owned());
     header.alg = Algorithm::RS256;
 
-    let authenticator = &_req.state().authenticator;
-
-    let user_uuid = match authenticator.authenticate(_req) {
-        Err(_) => return HttpResponse::new(StatusCode::UNAUTHORIZED),
-        Ok(user_uuid) => user_uuid,
-    }
-
     let my_claims = Claims {
-        uuid: user_uuid,
+        uuid: user_uuid.to_owned(),
         jti: Uuid::new_v4().to_string(),
         sub: String::from("Tto"),
-        company: _req.state().configuration.company.to_owned(),
+        company: company.to_owned(),
         exp: 1552974457,
         role: String::from("{}"),
         roles: String::from("{}"),
-        iss: _req.state().configuration.issuer_url.to_owned(),
+        iss: issuer_url.to_owned(),
         aud: String::from("IDP"),
     };
 
-    let token =
-        encode(&header, &my_claims, &_req.state().private_key).expect("cannot generate JWT token");
+    encode(&header, &my_claims, private_key).expect("cannot generate JWT token")
+}
 
-    let redirect_uri = Query::<AuthEndpointRequest>::extract(_req)
-        .expect("bad request, missing redirect_uri")
-        .redirect_uri
-        .clone();
+fn login_form(
+    req: &HttpRequest<ServerState>,
+) -> Box<Future<Item = HttpResponse, Error = actix_web::Error>> {
+    let state = req.state().clone();
+    let req2 = req.clone();
 
-    // return a 301 to param 'redirect_uri' with query param access_token = accesstoken
-    HttpResponse::MovedPermanently()
-        .header("Location", redirect_uri + "#access_token=" + &token)
-        .finish()*/
+    req.urlencoded::<FormData>()
+        .then(move |r| match r {
+            Err(_) => ok(HttpResponse::MovedPermanently()
+                .header("Location", "")
+                .finish()
+                .into()),
+            Ok(form) => {
+                let user_uuid = String::from(form.username);
+                let token = generate_jwt_token(
+                    &user_uuid,
+                    &state.private_key_kid,
+                    &state.configuration.company,
+                    &state.configuration.issuer_url,
+                    &state.private_key,
+                );
 
-    /*HttpResponse::Ok()
-    .content_encoding(ContentEncoding::Auto)
-    .content_type("application/json")
-    .body(token)*/
+                let redirect_uri = match Query::<AuthEndpointRequest>::extract(&req2) {
+                    Err(_) => {
+                        return ok(HttpResponse::MovedPermanently()
+                            .header("Location", "")
+                            .finish()
+                            .into());
+                    }
+
+                    Ok(form_data) => form_data.redirect_uri.clone(),
+                };
+
+                ok(HttpResponse::MovedPermanently()
+                    .header("Location", redirect_uri + "#access_token=" + &token)
+                    .finish()
+                    .into())
+            }
+        })
+        .responder()
 }
 
 fn main() {
@@ -176,7 +169,7 @@ fn main() {
             .middleware(middleware::Logger::default())
             .configure(|app| {
                 Cors::for_app(app)
-                    .allowed_origin("*")
+                    //.allowed_origin("*")
                     .allowed_methods(vec!["GET", "POST"])
                     .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
                     .allowed_header(header::CONTENT_TYPE)
