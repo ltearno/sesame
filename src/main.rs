@@ -112,6 +112,8 @@ fn login_form(
                         &state.private_key,
                     );
 
+                    println!("generated user {} jwt token {}", user_uuid, token);
+
                     ok(HttpResponse::MovedPermanently()
                         .header("Location", form.redirect_uri + "#access_token=" + &token)
                         .finish()
