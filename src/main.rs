@@ -9,21 +9,21 @@ extern crate base64;
 extern crate serde_json;
 extern crate serde_urlencoded;
 
-use futures::future::{ok, Err, Future};
-mod basic_authenticator;
+use futures::future::{ok, Future};
 mod config;
 mod model;
+use std::time::SystemTime;
 
 use config::*;
 use model::*;
 
 use actix_web::{
-    http, http::header, http::ContentEncoding, http::Method, http::StatusCode, middleware,
-    middleware::cors::Cors, server, App, AsyncResponder, Form, FromRequest, HttpMessage,
-    HttpRequest, HttpResponse, Query, Responder,
+    http, http::header, http::ContentEncoding, middleware, middleware::cors::Cors, server, App,
+    AsyncResponder, HttpMessage, HttpRequest, HttpResponse, Responder,
 };
 use jwt::{encode, Algorithm, Header};
 use openssl::rsa::Rsa;
+use openssl::sha::Sha512;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use uuid::Uuid;
 
@@ -34,7 +34,6 @@ struct ServerState {
     private_key_modulus: String,
     private_key_exponent: String,
     private_key_kid: String,
-    authenticator: basic_authenticator::BasicAuthenticator,
 }
 
 fn certs(_req: &HttpRequest<ServerState>) -> HttpResponse {
@@ -68,7 +67,14 @@ fn generate_jwt_token(
     company: &str,
     issuer_url: &str,
     private_key: &Vec<u8>,
+    token_duration_secs: u64,
 ) -> String {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("cannot measure time !")
+        .as_secs();
+    let expiration_time = now + token_duration_secs;
+
     let mut header = Header::default();
     header.kid = Some(kid.to_owned());
     header.alg = Algorithm::RS256;
@@ -78,7 +84,7 @@ fn generate_jwt_token(
         jti: Uuid::new_v4().to_string(),
         sub: String::from("Tto"),
         company: company.to_owned(),
-        exp: 1552974457,
+        exp: expiration_time as usize,
         role: String::from("{}"),
         roles: String::from("{}"),
         iss: issuer_url.to_owned(),
@@ -110,6 +116,7 @@ fn login_form(
                         &state.configuration.company,
                         &state.configuration.issuer_url,
                         &state.private_key,
+                        state.configuration.token_duration_secs,
                     );
 
                     println!("generated user {} jwt token {}", user_uuid, token);
@@ -142,6 +149,11 @@ fn main() {
     let private_key_exponent =
         base64::encode_config(&(rsa_key.e().to_vec()), base64::URL_SAFE_NO_PAD);
 
+    let mut hasher = Sha512::new();
+    hasher.update(&private_key);
+    let private_key_kid = hasher.finish();
+    let private_key_kid = base64::encode_config(&(private_key_kid.to_vec()), base64::STANDARD);
+
     check_configuration().expect("configuration error");
 
     let server_state = ServerState {
@@ -149,8 +161,7 @@ fn main() {
         private_key,
         private_key_modulus,
         private_key_exponent,
-        private_key_kid: Uuid::new_v4().to_string(),
-        authenticator: basic_authenticator::new_basic_authenticator(),
+        private_key_kid,
     };
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();

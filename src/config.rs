@@ -10,6 +10,7 @@ pub struct ConfigurationFile {
     pub listening_address: String,
     pub username: String,
     pub password: String,
+    pub token_duration_secs: u64,
 }
 
 pub fn read_configuration() -> Result<ConfigurationFile, String> {
