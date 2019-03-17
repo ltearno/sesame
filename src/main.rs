@@ -152,9 +152,20 @@ fn main() {
     let mut hasher = Sha512::new();
     hasher.update(&private_key);
     let private_key_kid = hasher.finish();
+
+    let mut hasher = Sha512::new();
+    hasher.update(&private_key_kid);
+    let private_key_kid = hasher.finish();
+
+    let mut hasher = Sha512::new();
+    hasher.update(&private_key_kid);
+    let private_key_kid = hasher.finish();
+
     let private_key_kid = base64::encode_config(&(private_key_kid.to_vec()), base64::STANDARD);
 
     check_configuration().expect("configuration error");
+
+    println!("using KID {}", private_key_kid);
 
     let server_state = ServerState {
         configuration,
